@@ -31,9 +31,16 @@ namespace Optimization::NonLinear
 {
 
 // The optimizer is a class specialised on the various algorithm types,
-// and its generic signature is stated here.
+// and its generic signature is stated here. It takes two algorithm IDs: one
+// for the primary algorithm and one for the secondary algorithm for two-level
+// algorithms like the augmented Lagrangian. The third template parameter is
+// to allow compile time differentiation of alternatives depending on the
+// algorithm types given as primary or secondary.
 
-template< Algorithm::ID > class Optimizer;
+template< Algorithm::ID PrimaryAlgorithm,
+          Algorithm::ID SecondaryAlgorithm = Algorithm::ID::NoAlgorithm,
+					class Enable = void >
+class Optimizer;
 
 // -----------------------------------------------------------------------------
 // Optimizer interface
@@ -45,7 +52,7 @@ template< Algorithm::ID > class Optimizer;
 // find an optimal solution. The interface is an abstract class that should
 // only be used as a base class for the derived methods
 
-class OptimizerInterface : virtual public Objective
+class OptimizerInterface : virtual public ObjectiveInterface
 {
 private:
   // The various NLOpt functions return a status code that by default will
@@ -74,7 +81,7 @@ protected:
 
   inline std::string GetAlgorithmName( void )
   {
-    return std::string( 
+    return std::string(
     nlopt_algorithm_name( static_cast< nlopt_algorithm >( GetAlgorithm() )));
   }
 
@@ -96,7 +103,7 @@ protected:
 
   inline void DeleteSolver( void )
   {
-    if ( Solver != nullptr ) 
+    if ( Solver != nullptr )
     {
       nlopt_destroy( Solver );
       Solver = nullptr;
@@ -110,29 +117,29 @@ protected:
   // the solver, and should be called by the overloaded algorithmic specific
   // functions.
 
-  virtual SolverPointer CreateSolver( Dimension NumberOfVariables, 
+  virtual SolverPointer CreateSolver( Dimension NumberOfVariables,
                         Objective::Goal Direction = Objective::Goal::Minimize )
   {
     if( Solver != nullptr )
       DeleteSolver();
 
     if ( GetAlgorithm() < Algorithm::ID::MaxNumber )
-      Solver = nlopt_create( static_cast< nlopt_algorithm >( GetAlgorithm() ), 
+      Solver = nlopt_create( static_cast< nlopt_algorithm >( GetAlgorithm() ),
                              NumberOfVariables );
     else
     {
       std::ostringstream ErrorMessage;
-      
+
       ErrorMessage << __FILE__ << " at line " << __LINE__ << ": "
                    << "The algorithm ID of this class does not correspond "
                    << "to a legal algorithm";
-                   
+
       throw std::invalid_argument( ErrorMessage.str() );
     }
 
     if ( Solver != nullptr )
       return Solver;
-    else 
+    else
     {
       std::ostringstream ErrorMessage;
 
@@ -181,7 +188,7 @@ protected:
   class RoundoffLimited : public std::runtime_error
   {
   public:
-  
+
     RoundoffLimited( const std::string & ErrorMessage )
     : std::runtime_error( ErrorMessage )
     {}
@@ -196,7 +203,7 @@ protected:
   class ForcedStop : public std::runtime_error
   {
   public:
-  
+
     ForcedStop( const std::string & ErrorMessage )
     : std::runtime_error( ErrorMessage )
     {}
@@ -213,11 +220,11 @@ protected:
   class ConditionalSuccess
   {
   private:
-  
+
     const std::string Explaination;
 
   public:
-  
+
     inline std::string what( void )
     { return Explaination; }
 
@@ -239,7 +246,7 @@ protected:
   class StopValueReached : public ConditionalSuccess
   {
   public:
-  
+
     StopValueReached( const std::string & Description )
     : ConditionalSuccess( Description )
     {}
@@ -253,8 +260,8 @@ protected:
   class ToleranceReached : public ConditionalSuccess
   {
   public:
-  
-    ToleranceReached( const std::string & Description) 
+
+    ToleranceReached( const std::string & Description)
     : ConditionalSuccess( Description )
     {}
 
@@ -267,7 +274,7 @@ protected:
   class LimitReached : public ConditionalSuccess
   {
   public:
-  
+
     LimitReached( const std::string & Description )
     : ConditionalSuccess( Description )
     {}
@@ -280,30 +287,30 @@ protected:
   // context, i.e. in which situation resulted in the given status.
   // The aim os to give better error messages.
 
-  void CheckStatus( const nlopt_result Status, 
+  void CheckStatus( const nlopt_result Status,
                     const std::string& Context = std::string() )
   {
-    switch( StatusAction.at( Status ) ) 
+    switch( StatusAction.at( Status ) )
     {
-    case NLOPT_FAILURE: 
+    case NLOPT_FAILURE:
       {
         std::ostringstream ErrorMessage;
 
         ErrorMessage << "General failure when performing operation " << Context;
 
         throw std::runtime_error( ErrorMessage.str() );
-      } 
+      }
       break;
-    case NLOPT_INVALID_ARGS: 
+    case NLOPT_INVALID_ARGS:
       {
         std::ostringstream ErrorMessage;
 
-        ErrorMessage << "A function call " << Context 
+        ErrorMessage << "A function call " << Context
                      << " was performed with invalid arguments for the "
                      << "algorithm " << GetAlgorithmName();
 
         throw std::invalid_argument( ErrorMessage.str() );
-      } 
+      }
       break;
     case NLOPT_OUT_OF_MEMORY:
       // Ideally a bad_alloc exception should be thrown but it does
@@ -314,17 +321,17 @@ protected:
 
       throw std::system_error(ENOMEM, std::generic_category(), Context);
       break;
-    case NLOPT_ROUNDOFF_LIMITED: 
+    case NLOPT_ROUNDOFF_LIMITED:
       {
         std::ostringstream ErrorMessage;
 
-        ErrorMessage << "The operation " << Context 
+        ErrorMessage << "The operation " << Context
                      << " was round off limited";
 
         throw RoundoffLimited( ErrorMessage.str() );
-      } 
+      }
       break;
-    case NLOPT_FORCED_STOP: 
+    case NLOPT_FORCED_STOP:
       {
         std::ostringstream ErrorMessage;
 
@@ -332,14 +339,14 @@ protected:
                      << " stop request";
 
         throw ForcedStop( ErrorMessage.str() );
-      } 
+      }
       break;
     case NLOPT_SUCCESS:
       break; // Easy, do nothing!
     case NLOPT_STOPVAL_REACHED:
       throw StopValueReached( Context );
       break;
-    case NLOPT_FTOL_REACHED: 
+    case NLOPT_FTOL_REACHED:
       {
         std::ostringstream StopInformation;
 
@@ -347,9 +354,9 @@ protected:
                         << "reached " << Context;
 
         throw ToleranceReached( StopInformation.str() );
-      } 
+      }
       break;
-    case NLOPT_XTOL_REACHED: 
+    case NLOPT_XTOL_REACHED:
       {
         std::ostringstream StopInformation;
 
@@ -357,9 +364,9 @@ protected:
                         << "was reached " << Context;
 
         throw ToleranceReached( StopInformation.str() );
-      } 
+      }
       break;
-    case NLOPT_MAXEVAL_REACHED: 
+    case NLOPT_MAXEVAL_REACHED:
       {
         std::ostringstream StopInformation;
 
@@ -367,9 +374,9 @@ protected:
                         << "reached " << Context;
 
         throw LimitReached( StopInformation.str() );
-      } 
+      }
       break;
-    case NLOPT_MAXTIME_REACHED: 
+    case NLOPT_MAXTIME_REACHED:
       {
         std::ostringstream StopInformation;
 
@@ -377,9 +384,9 @@ protected:
                         << "reached " << Context;
 
         throw LimitReached( StopInformation.str() );
-      } 
+      }
       break;
-    default: 
+    default:
       {
         // This should never be evaluated because the "at" function
         // used to map the status to the status action should throw
@@ -388,7 +395,7 @@ protected:
         std::ostringstream ErrorMessage;
 
         ErrorMessage << __FILE__ << " at line " << __LINE__ << ": "
-                     << "An unknown NLopt return status" << Status 
+                     << "An unknown NLopt return status" << Status
                      << " was provided indicating a serious misuse";
 
         throw std::invalid_argument( ErrorMessage.str() );
@@ -407,12 +414,12 @@ protected:
 
   inline void StopValue( double TheValue )
   {
-    if ( Solver != nullptr ) 
+    if ( Solver != nullptr )
     {
       nlopt_result Result = nlopt_set_stopval( Solver, TheValue );
       CheckStatus( Result, "Setting a stop value for the solver" );
-    } 
-    else 
+    }
+    else
     {
       std::ostringstream ErrorMessage;
 
@@ -428,7 +435,7 @@ protected:
   {
     std::optional< double > TheValue;
 
-    if ( Solver != nullptr ) 
+    if ( Solver != nullptr )
     {
       double Value = nlopt_get_stopval( Solver );
 
@@ -448,12 +455,12 @@ protected:
 
   inline void RelativeObjectiveValueTolerance( double Tolerance )
   {
-    if ( Solver != nullptr ) 
+    if ( Solver != nullptr )
     {
       nlopt_result Result = nlopt_set_ftol_rel( Solver, Tolerance );
       CheckStatus( Result, "Setting the relative objective value tolerance" );
-    } 
-    else 
+    }
+    else
     {
       std::ostringstream ErrorMessage;
 
@@ -469,7 +476,7 @@ protected:
   {
     std::optional< double > TheValue;
 
-    if ( Solver != nullptr ) 
+    if ( Solver != nullptr )
     {
       double Tolerance = nlopt_get_ftol_rel( Solver );
 
@@ -486,12 +493,12 @@ protected:
 
   inline void AbsoluteObjectiveValueTolerance( double Tolerance )
   {
-    if ( Solver != nullptr ) 
+    if ( Solver != nullptr )
     {
       nlopt_result Result = nlopt_set_ftol_abs(Solver, Tolerance);
       CheckStatus(Result, "Setting the absolute objective value tolerance");
-    } 
-    else 
+    }
+    else
     {
       std::ostringstream ErrorMessage;
 
@@ -507,7 +514,7 @@ protected:
   {
     std::optional< double > TheValue;
 
-    if ( Solver != nullptr ) 
+    if ( Solver != nullptr )
     {
       double Tolerance = nlopt_get_ftol_abs( Solver );
 
@@ -527,12 +534,12 @@ protected:
 
   inline void RelativeVariableValueTolerance( double Tolerance )
   {
-    if ( Solver != nullptr ) 
+    if ( Solver != nullptr )
     {
       nlopt_result Result = nlopt_set_xtol_rel( Solver, Tolerance );
       CheckStatus( Result, "Setting the relative variable value tolerance" );
-    } 
-    else 
+    }
+    else
     {
       std::ostringstream ErrorMessage;
 
@@ -548,7 +555,7 @@ protected:
   {
     std::optional< double > TheValue;
 
-    if ( Solver != nullptr ) 
+    if ( Solver != nullptr )
     {
       double Tolerance = nlopt_get_xtol_rel( Solver );
 
@@ -559,24 +566,24 @@ protected:
     return TheValue;
   }
 
-  // The absolute variable value tolerance will terminate the search if the 
-  // change between two successive iterations is less than the absolute 
-  // tolerance value. It should be noted that the tolerance has to be given for 
-  // each variable as they may have different scale and therefore different 
-  // absolute tolerances. Note that the return value of the function to read 
-  // the tolerances returns a vector whose elements are optional tolerance 
+  // The absolute variable value tolerance will terminate the search if the
+  // change between two successive iterations is less than the absolute
+  // tolerance value. It should be noted that the tolerance has to be given for
+  // each variable as they may have different scale and therefore different
+  // absolute tolerances. Note that the return value of the function to read
+  // the tolerances returns a vector whose elements are optional tolerance
   // values. if no solver exists the size of this vector is zero.
 
-  inline void AbsoluteVariableValueTolerance( 
+  inline void AbsoluteVariableValueTolerance(
                                      const std::vector< double > & Tolerances )
   {
     if ( Solver != nullptr )
-      if ( Tolerances.size() == GetDimension() ) 
+      if ( Tolerances.size() == GetDimension() )
       {
         nlopt_result Result = nlopt_set_xtol_abs( Solver, Tolerances.data() );
         CheckStatus( Result, "Setting the absolute variable value tolerance" );
-      } 
-      else 
+      }
+      else
       {
         std::ostringstream ErrorMessage;
 
@@ -587,7 +594,7 @@ protected:
 
         throw std::invalid_argument( ErrorMessage.str() );
       }
-    else 
+    else
     {
       std::ostringstream ErrorMessage;
 
@@ -599,12 +606,12 @@ protected:
     }
   }
 
-  inline std::vector< std::optional< double > > 
+  inline std::vector< std::optional< double > >
   AbsoluteVariableValueTolerance( void )
   {
     std::vector< std::optional< double > > Values;
 
-    if ( Solver != nullptr ) 
+    if ( Solver != nullptr )
     {
       Dimension ProblemSize = GetDimension();
       std::vector< double > Tolerances( ProblemSize, 0.0 );
@@ -628,7 +635,7 @@ protected:
 
   inline void AbsoluteVariableValueTolerance( double CommonTolerance )
   {
-    AbsoluteVariableValueTolerance( std::vector< double >( GetDimension(), 
+    AbsoluteVariableValueTolerance( std::vector< double >( GetDimension(),
                                                            CommonTolerance) );
   }
 
@@ -639,12 +646,12 @@ protected:
 
   inline void MaxNumberOfEvaluations( int MaxEval )
   {
-    if ( Solver != nullptr ) 
+    if ( Solver != nullptr )
     {
       nlopt_result Result = nlopt_set_maxeval( Solver, MaxEval );
       CheckStatus( Result, "Setting the maximum number of evaluations" );
-    } 
-    else 
+    }
+    else
     {
       std::ostringstream ErrorMessage;
 
@@ -674,13 +681,13 @@ protected:
 
   inline void MaxTime( std::chrono::seconds Timeout )
   {
-    if ( Solver != nullptr ) 
+    if ( Solver != nullptr )
     {
-      nlopt_result Result = nlopt_set_maxtime( Solver, 
+      nlopt_result Result = nlopt_set_maxtime( Solver,
                             static_cast< double >( Timeout.count() ) );
       CheckStatus( Result, "Setting the evaluation time limit" );
-    } 
-    else 
+    }
+    else
     {
       std::ostringstream ErrorMessage;
 
@@ -692,16 +699,16 @@ protected:
     }
   }
 
-  inline std::optional< std::chrono::seconds > MaxTime( void ) 
+  inline std::optional< std::chrono::seconds > MaxTime( void )
   {
     std::optional< std::chrono::seconds > Timeout;
 
-    if ( Solver != nullptr ) 
+    if ( Solver != nullptr )
     {
       double TimeLimit = nlopt_get_maxtime( Solver );
 
       if ( TimeLimit > 0.0 )
-        Timeout = std::chrono::seconds( 
+        Timeout = std::chrono::seconds(
                   boost::numeric_cast< std::chrono::seconds::rep >(TimeLimit) );
     }
 
@@ -722,12 +729,12 @@ protected:
   class OptimalSolution
   {
   public:
-  
+
     const Variables VariableValues;
     const double ObjectiveValue;
     const nlopt_result Status;
 
-    OptimalSolution( const Variables & VariableAssignments, 
+    OptimalSolution( const Variables & VariableAssignments,
                      double ValueOfObjective, nlopt_result SolverStatus )
     : VariableValues( VariableAssignments ), ObjectiveValue( ValueOfObjective ),
       Status( SolverStatus )
@@ -741,7 +748,7 @@ protected:
   // functionality. However, normally the standard behaviour should be
   // sufficient.
 
-  virtual 
+  virtual
   OptimalSolution FindSolution( const Variables & InitialVariableValues )
   {
     // Create the solver if it has not already been done. Note that it uses the
@@ -760,7 +767,7 @@ protected:
     // The solver is invoked to change these values for the optimal
     // solution
 
-    nlopt_result Result = nlopt_optimize( Solver, OptimalValues.data(), 
+    nlopt_result Result = nlopt_optimize( Solver, OptimalValues.data(),
                                           &ObjectiveValue );
 
     // The result can then be returned as an optimal solution leaving the
@@ -774,15 +781,15 @@ protected:
 
   OptimizerInterface(void)
   : Optimization::Objective(),
-    StatusAction({ { NLOPT_FAILURE, NLOPT_FAILURE }, 
+    StatusAction({ { NLOPT_FAILURE, NLOPT_FAILURE },
                    { NLOPT_INVALID_ARGS, NLOPT_INVALID_ARGS },
-                   { NLOPT_OUT_OF_MEMORY, NLOPT_OUT_OF_MEMORY }, 
+                   { NLOPT_OUT_OF_MEMORY, NLOPT_OUT_OF_MEMORY },
                    { NLOPT_ROUNDOFF_LIMITED, NLOPT_ROUNDOFF_LIMITED },
-                   { NLOPT_FORCED_STOP, NLOPT_FORCED_STOP }, 
+                   { NLOPT_FORCED_STOP, NLOPT_FORCED_STOP },
                    { NLOPT_SUCCESS, NLOPT_SUCCESS },
-                   { NLOPT_STOPVAL_REACHED, NLOPT_STOPVAL_REACHED }, 
+                   { NLOPT_STOPVAL_REACHED, NLOPT_STOPVAL_REACHED },
                    { NLOPT_FTOL_REACHED, NLOPT_FTOL_REACHED },
-                   { NLOPT_XTOL_REACHED, NLOPT_XTOL_REACHED }, 
+                   { NLOPT_XTOL_REACHED, NLOPT_XTOL_REACHED },
                    { NLOPT_MAXEVAL_REACHED, NLOPT_MAXEVAL_REACHED },
                    { NLOPT_MAXTIME_REACHED, NLOPT_MAXTIME_REACHED } }),
     Solver( nullptr )
