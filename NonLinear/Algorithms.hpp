@@ -47,18 +47,18 @@ namespace Optimization::NonLinear
 
 class Algorithm
 {
-public:
+private:
 
   // The algorithms are defined in the NLopt header as a simple enum, which
   // means that any integer can be implicitly passed to any function taking
   // the algorithm as argument, even values that are not corresponding to any
   // algorithm. C++ introduces a scoped enumerator, making the enum a Type
   // and therefore preventing unintended enum assignments. Hence the algorithm
-  // ID is redefined as a scoped enumerator. Since C++17 one has list
+  // identifier is redefined as a scoped enumerator. Since C++17 one has list
   // initialisers for scoped enums having a storage type. Thus, one may create
-  // an algorithm ID on the fly by saying Algorithm::ID{ 101 } even though
-  // there may not be an algorithm with number 101, it is still valid.
-  // There is no way to prevent such wilful out-of-range conversions
+  // an algorithm identifier on the fly by saying Algorithm::Identifier{ 101 }
+	// even though there may not be an algorithm with number 101, it is still
+	// valid. There is no way to prevent such wilful out-of-range conversions
   // and assignments. Defining the enum as a scoped type still helps though
   // as it will prevent the assignment of negative numbers. The max number
   // of algorithms is also explicitly defined so that the function creating
@@ -67,15 +67,26 @@ public:
   //
   // It should be noted that although all the algorithms below are defined
   // structurally to highlight what they do and not their names, one may still
-  // use the NLopt defined constants by encapsulating them in the ID enumeration
-  // as is done in the actual definitions below. By default it defines the
-  // number of algorithms and one special field for no algorithm in case
-  // the optimiser has no secondary algorithm.
+  // use the NLopt defined constants by encapsulating them in the identifier
+	// enumeration as is done in the actual definitions below. By default it
+	// defines the number of algorithms and one special field for no algorithm
+	// in case the optimiser has no secondary algorithm.
 
-  enum class ID : unsigned short int {
+  enum class Identifier : unsigned short int {
 		MaxNumber = NLOPT_NUM_ALGORITHMS,
 		NoAlgorithm
 	};
+
+public:
+
+	// The Identifier class is made private to ensure that the wrong extensions
+	// will not be made, as indicated. However, that also means that it cannot
+	// be used as arguments to functions or templates. The following is a small
+	// trick that will allow Algorithm::ID to be used as a legal type, but all
+	// values have to be assigned from the set of constants declared
+	// hierarchically below to highlight their structural dependencies.
+
+	using ID = Identifier;
 
 	// There is a function to test if a given algorithm requires gradients. In
 	// the newer versions of the standard it is no longer necessary to initialise
